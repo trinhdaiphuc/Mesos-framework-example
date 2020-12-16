@@ -4,7 +4,12 @@ The demo shows how to implement a custom Executor and Scheduler communicating wi
 
 ### How to run the demo framework:
 - Assume there is Mesos endpoint is running on http://127.0.0.1:5050
-- Clone repository: https://github.com/trinhdaiphuc/Mesos-framework-example
+- Clone repository: 
+
+```
+git clone https://github.com/trinhdaiphuc/Mesos-framework-example
+```
+
 - Set up environments: the demo support .env file for an easier setup like the example above or `.env.example` file:
 
 ```sh
