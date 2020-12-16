@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"strconv"
 	"sync"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/carlonelong/mesos-framework-sdk/logging"
 	"github.com/carlonelong/mesos-framework-sdk/resources"
 	"github.com/carlonelong/mesos-framework-sdk/scheduler"
+	"github.com/carlonelong/mesos-framework-sdk/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/trinhdaiphuc/Mesos-framework-example/config"
 )
@@ -21,9 +23,11 @@ type Scheduler struct {
 	FrameworkInfo  *mesos_v1.FrameworkInfo
 	CommandInfoURI []*mesos_v1.CommandInfo_URI
 	Client         client.Client
-	TaskLaunch     int
+	TaskLaunch     int // The counter task number
 	sync.Mutex
 }
+
+var apiPath = "/api/v1/scheduler"
 
 func toJsonString(t interface{}) string {
 	result, _ := json.Marshal(t)
@@ -33,24 +37,28 @@ func toJsonString(t interface{}) string {
 func NewScheduler(cfg config.Config, executorURI string) *Scheduler {
 	logger := logging.NewDefaultLogger()
 	frameworkInfo := &mesos_v1.FrameworkInfo{
-		User:            config.ProtoString(cfg.User),
-		Name:            config.ProtoString(cfg.Name),
-		FailoverTimeout: config.ProtoFloat64(cfg.FailoverTimeout.Seconds()),
-		Checkpoint:      config.ProtoBool(cfg.Checkpoint),
-		Role:            config.ProtoString(cfg.Role),
-		Hostname:        config.ProtoString(cfg.Hostname),
+		User:            utils.ProtoString(cfg.User),
+		Name:            utils.ProtoString(cfg.Name),
+		FailoverTimeout: utils.ProtoFloat64(cfg.FailoverTimeout.Seconds()),
+		Checkpoint:      utils.ProtoBool(cfg.Checkpoint),
+		Role:            utils.ProtoString(cfg.Role),
+		Hostname:        utils.ProtoString(cfg.Hostname),
+	}
+	// Create API endpoint for executor
+	apiURL := url.URL{
+		Scheme: "http",
+		Host:   cfg.MesosEndpoint,
+		Path:   apiPath,
 	}
 
 	// Create http client to handle calls and events framework
-	clientScheduler := client.NewClient(
-		client.ClientData{
-			Endpoint: cfg.SchedulerEndpoint,
-		}, logger)
+	clientScheduler := client.NewClient(client.ClientData{Endpoint: apiURL.String()}, logger)
 
+	// Set up executor command from executor endpoint
 	commandURI := []*mesos_v1.CommandInfo_URI{
 		{
-			Value:      config.ProtoString(executorURI),
-			Executable: config.ProtoBool(true),
+			Value:      utils.ProtoString(executorURI),
+			Executable: utils.ProtoBool(true),
 		},
 	}
 	return &Scheduler{
@@ -80,12 +88,12 @@ func (s *Scheduler) Run(logger logging.Logger) {
 			s.FrameworkInfo.Id = event.Subscribed.FrameworkId
 		case mesos_v1_scheduler.Event_OFFERS.String():
 			fmt.Printf("Scheduler offers %+v\n", toJsonString(event.Offers))
+			// Create tasks and send Accept request to tell Executor launch these
 			go s.Accept(sched, event.Offers.Offers)
 		case mesos_v1_scheduler.Event_MESSAGE.String():
 			fmt.Println("Executor message", string(event.Message.Data))
 		}
 	}
-
 }
 
 func createResources(offer *mesos_v1.Offer, cpu, mem float64) []*mesos_v1.Resource {
@@ -97,9 +105,9 @@ func createResources(offer *mesos_v1.Offer, cpu, mem float64) []*mesos_v1.Resour
 }
 
 func createTaskInfo(agentID *mesos_v1.AgentID, executorInfo *mesos_v1.ExecutorInfo, taskLaunch int, resource []*mesos_v1.Resource) *mesos_v1.TaskInfo {
-	taskID := &mesos_v1.TaskID{Value: config.ProtoString(strconv.Itoa(taskLaunch))}
+	taskID := &mesos_v1.TaskID{Value: utils.ProtoString(strconv.Itoa(taskLaunch))}
 	return &mesos_v1.TaskInfo{
-		Name:      config.ProtoString("Test-Task-" + *taskID.Value),
+		Name:      utils.ProtoString("Test-Task-" + *taskID.Value),
 		TaskId:    taskID,
 		AgentId:   agentID,
 		Resources: resource,
@@ -107,14 +115,22 @@ func createTaskInfo(agentID *mesos_v1.AgentID, executorInfo *mesos_v1.ExecutorIn
 	}
 }
 
-func (s *Scheduler) Accept(sched *scheduler.DefaultScheduler, offers []*mesos_v1.Offer) {
+// checkTaskLaunch return true if TaskLaunch counter is not greater than total
+func (s *Scheduler) checkTaskLaunch(total int) bool {
 	s.Lock()
+	defer s.Unlock()
+	if s.TaskLaunch >= total {
+		return false
+	}
 	s.TaskLaunch++
-	if s.TaskLaunch > 5 {
-		s.Unlock()
+	return true
+}
+
+func (s *Scheduler) Accept(sched *scheduler.DefaultScheduler, offers []*mesos_v1.Offer) {
+	// Increase counter and create only 5 tasks
+	if !s.checkTaskLaunch(5) {
 		return
 	}
-	s.Unlock()
 
 	// Create ressources
 	res := createResources(offers[0], 1.0, 128.0)
@@ -122,10 +138,10 @@ func (s *Scheduler) Accept(sched *scheduler.DefaultScheduler, offers []*mesos_v1
 	// Create executor info
 	executor := &mesos_v1.ExecutorInfo{
 		Type:        mesos_v1.ExecutorInfo_CUSTOM.Enum(),
-		ExecutorId:  &mesos_v1.ExecutorID{Value: config.ProtoString(uuid.NewV1().String())},
+		ExecutorId:  &mesos_v1.ExecutorID{Value: utils.ProtoString(uuid.NewV1().String())},
 		FrameworkId: s.FrameworkInfo.Id,
-		Command:     resources.CreateSimpleCommandInfo(config.ProtoString("./executor"), s.CommandInfoURI),
-		Name:        config.ProtoString("Test-Executor"),
+		Command:     resources.CreateSimpleCommandInfo(utils.ProtoString("./executor"), s.CommandInfoURI),
+		Name:        utils.ProtoString("Test-Executor"),
 	}
 
 	offerIDs := []*mesos_v1.OfferID{offers[0].Id}
@@ -140,7 +156,7 @@ func (s *Scheduler) Accept(sched *scheduler.DefaultScheduler, offers []*mesos_v1
 	}
 	operations := []*mesos_v1.Offer_Operation{operation}
 
-	filter := &mesos_v1.Filters{RefuseSeconds: config.ProtoFloat64(5.0)}
+	filter := &mesos_v1.Filters{RefuseSeconds: utils.ProtoFloat64(5.0)}
 
 	_, err := sched.Accept(offerIDs, operations, filter)
 	if err != nil {

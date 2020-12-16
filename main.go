@@ -13,8 +13,6 @@ import (
 	"github.com/trinhdaiphuc/Mesos-framework-example/scheduler"
 )
 
-var serverURI = ""
-
 func main() {
 	godotenv.Load()
 	cfg := config.NewConfig()
@@ -22,10 +20,10 @@ func main() {
 	logger := logging.NewDefaultLogger()
 
 	// Create a http server to serve custom executor binary
-	serverCfg := server.NewConfiguration("", "", cfg.ExecutorBinary, 5656)
+	serverCfg := server.NewConfiguration("", "", cfg.ExecutorBinary, cfg.ExecutorServerPort)
 	execServer := file.NewExecutorServer(serverCfg, logger)
 	go execServer.Serve()
-	serverURI = fmt.Sprintf("http://localhost:%v%v", serverCfg.Port(), "/executor")
+	serverURI := fmt.Sprintf("http://localhost:%v%v", serverCfg.Port(), "/executor")
 	fmt.Println("Executor binary is serving on", serverURI)
 
 	// Create framework scheduler

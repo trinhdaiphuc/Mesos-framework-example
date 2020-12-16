@@ -21,8 +21,8 @@ func envDuration(key, defaultValue string) time.Duration {
 	return value
 }
 
-func envFloat(key, defaultValue string) float64 {
-	value, err := strconv.ParseFloat(env(key, defaultValue), 64)
+func envInt(key, defaultValue string) int {
+	value, err := strconv.Atoi(env(key, defaultValue))
 	if err != nil {
 		panic(err.Error())
 	}
