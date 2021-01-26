@@ -1,9 +1,9 @@
 # Mesos golang framework demo
 
-The demo shows how to implement a custom Executor and Scheduler communicating with Mesos masters and slaves. For easy and fast development, we use Mesos framework SDK to create a demo that executes 5 simple tasks through HTTP API wrapped for Calls and Events handlers. 
+The demo shows how to implement a custom Executor and Scheduler communicating with Mesos masters and slaves. For easy and fast development, I use [Mesos framework SDK](https://github.com/carlonelong/mesos-framework-sdk) to create a demo that executes 5 simple tasks through HTTP API wrapped for Calls and Events handlers. 
 
 ### How to run the demo framework:
-- Assume there is Mesos endpoint is running on http://127.0.0.1:5050
+- Assume there is Mesos master endpoint is running on http://127.0.0.1:5050
 - Clone repository: 
 
 ```
